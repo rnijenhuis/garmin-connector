@@ -65,7 +65,12 @@ class GarminTools:
                     'duration_seconds': metrics.get('duration')}, 'laps': laps}
         except GarminConnectAuthenticationError:
             return error('authentication_required', 'Refresh your saved Garmin session in a separate terminal.')
-        except Exception:
+        except Exception as exc:
+            status = getattr(getattr(exc, 'response', None), 'status_code', None)
+            if status == 403:
+                return error('activity_access_denied', 'Garmin denied access to this activity. Check the activity ID and access in your Garmin Connect account.')
+            if status == 404:
+                return error('activity_not_found', 'Garmin could not find an accessible activity with this ID.')
             return error('garmin_api_error', 'Could not retrieve activity details.')
 
     def build_running_workout(self, name, steps):

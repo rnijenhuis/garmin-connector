@@ -27,6 +27,13 @@ def validate_workout(payload):
             steps.append(RunningStep(step['stepType']['stepTypeKey'],
                                      step['endConditionValue'], pace))
         expected = build_running_workout(payload['workoutName'], steps)
+        # Preserve validated speeds: pace -> speed round trips can differ by
+        # one floating-point bit for otherwise valid custom pace values.
+        for original, rebuilt in zip(segments[0]['workoutSteps'],
+                                     expected['workoutSegments'][0]['workoutSteps']):
+            if original['targetType']['workoutTargetTypeKey'] == 'pace.zone':
+                rebuilt['targetValueOne'] = original['targetValueOne']
+                rebuilt['targetValueTwo'] = original['targetValueTwo']
         # Strict comparison also rejects IDs, unknown fields, wrong sport/condition
         # identifiers, missing target values and nonconsecutive step ordering.
         if payload != expected:

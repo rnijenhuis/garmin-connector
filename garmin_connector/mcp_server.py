@@ -10,8 +10,8 @@ from .mcp_tools import GarminTools
 class StepInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     kind: Literal['warmup', 'interval', 'recovery', 'cooldown']
-    distance_m: float = Field(gt=0, allow_inf_nan=False)
-    pace_seconds_per_km: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    distance_m: float = Field(gt=0, allow_inf_nan=False, strict=True)
+    pace_seconds_per_km: float | None = Field(default=None, gt=0, allow_inf_nan=False, strict=True)
 
 
 def create_server(service=None):

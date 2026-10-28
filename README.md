@@ -26,8 +26,8 @@ Tests use unittest.mock and do not contact Garmin.
 - `workouts.py`: immutable RunningStep inputs and pure JSON payload construction.
 - `cli.py`: interactive input and presentation only.
 
-These functions can be called from future MCP tools without interactive prompts;
-keep authentication and write approval at that future integration boundary.
+The MCP layer calls these functions without interactive prompts; authentication
+and write approval are handled at the MCP integration boundary.
 
 ## Prepared workout
 
@@ -63,10 +63,9 @@ Inspected local source files in
 - The library also exposes workout reads, updates, deletion, scheduling and
   device push operations. These write methods are not called by this project.
 
-The generated structure is checked offline. Garmin server acceptance has not
-been tested. Real workout creation requires explicit confirmation of the reviewed payload.
-Scheduling, updates and device pushes are not implemented. No real Garmin writes or
-live authentication were performed during this implementation.
+The first generated workout was successfully created in Garmin Connect as
+workout ID 1744104267; the server returned the expected seven steps and 7 km total. Real workout creation requires explicit confirmation of the reviewed payload.
+Scheduling, updates and device pushes are not implemented. No live Garmin operations are performed by automated tests.
 
 
 ## Confirmed test upload
@@ -86,8 +85,9 @@ The saved `examples/running_workout.json` contains the named preview; the upload
 command builds it from code rather than loading arbitrary JSON. Validation checks
 our supported JSON schema: required name, running sport, one segment, nonempty
 ordered executable steps, positive finite distances and pace targets, consistent
-Garmin enum IDs/keys, and no server IDs or additional fields. Generic upload does
-not validate required fields locally. Garmin server acceptance is still pending.
+Garmin enum IDs/keys, and no server IDs or additional fields. The installed generic upload method does
+not validate required fields locally; this project validates its supported schema
+before calling it. The first seven-step payload has been accepted by Garmin.
 The optional typed RunningWorkout model additionally requires a duration estimate;
 we use the generic dict API without inventing one for open-pace steps.
 
@@ -118,7 +118,7 @@ From the project directory, start in read-only mode:
 .venv/bin/python -m garmin_connector.mcp_server
 ```
 
-Absolute command (works from any directory):
+Absolute interpreter command (run with the project as working directory):
 
 ```bash
 /home/robert/Documents-Prive/Projects/garmin-connector/.venv/bin/python -m garmin_connector.mcp_server
@@ -159,6 +159,16 @@ Inspector requires Node.js/npm (`npx`). From the project directory:
 npx @modelcontextprotocol/inspector .venv/bin/python -m garmin_connector.mcp_server
 ```
 
+To allow terminal-approved uploads, start Inspector with:
+
+```bash
+npx @modelcontextprotocol/inspector .venv/bin/python -m garmin_connector.mcp_server --enable-uploads
+```
+
+**Inspector starts its own Python server process.** A server started separately
+in another terminal is not the process Inspector connects to. Stop/relaunch the
+Inspector connection with the flag to enable uploads in its child process.
+
 Alternatively open Inspector with `npx @modelcontextprotocol/inspector`, choose
 **STDIO**, set Command to the absolute project `.venv/bin/python`, Arguments to
 `-m garmin_connector.mcp_server`, and launch it with the project as its working
@@ -178,7 +188,7 @@ Try these tool arguments:
 
 ```json
 {
-  "name": "MCP Running Preview",
+  "name": "MCP Test Workout",
   "steps": [
     {"kind": "warmup", "distance_m": 2000},
     {"kind": "interval", "distance_m": 1000, "pace_seconds_per_km": 300},
@@ -191,26 +201,51 @@ Try these tool arguments:
 }
 ```
 
+Distances (`distance_m` and generated `endConditionValue`) are **metres**;
+`pace_seconds_per_km` is **seconds per kilometre** (300 means 5:00/km).
+The installed `garminconnect/workout.py` documents `PaceTarget` bounds in m/s
+and implements `pace_to_mps` with the same conversion as this builder:
+`1000 / pace_seconds_per_km`. Thus 300 becomes 3.3333333333333335 m/s in both
+`targetValueOne` and `targetValueTwo`; only exact pace targets are supported.
+
 Responses have `ok` and either structured results or a safe `error.code` and
 `error.message`. SDK schema validation failures are MCP tool errors. Raw activity
 objects, GPS, names, dates, profile fields and raw upload responses are excluded.
 STDOUT is reserved for MCP protocol messages; no prompts or debug prints.
 
-### Optional upload approval workflow (not run during development)
+### Verified integration and upload example
+
+The manual end-to-end test verified Python/STDIO startup, Inspector connection,
+activity summaries, activity details/laps, offline workout construction and a
+terminal-approved Garmin Connect upload. The verified workout is **MCP Test
+Workout**, Garmin workout ID **1744319670**. This is a recorded manual result;
+automated tests do not make live Garmin calls.
+
+Use the builder arguments above, then follow this complete upload sequence with
+Inspector's upload-enabled server. Each successful upload creates a new workout.
 
 Only when you intend to create a new workout, restart Inspector's server with
 `--enable-uploads` appended to its arguments. Then:
 
-1. Build and review a workout.
+1. Call `build_running_workout` with the JSON above and review its result:
+   `{"ok": true, "workout": {...}}`.
+   Copy only the inner `workout` object into the upload tool's `workout` argument,
+   not the outer `ok` wrapper. In the following examples, `WORKOUT_OBJECT` means
+   that complete copied object (replace the placeholder before submitting).
 2. Call `upload_running_workout` with `workout` and no approval ID. This creates
    local pending state only and returns an `approval_id`; it does not authenticate
-   or upload.
+   or upload. Tool arguments:
+   `{"workout": WORKOUT_OBJECT}`.
 3. In a separate, human-operated terminal from the project directory run:
    `.venv/bin/python -m garmin_connector.approvals APPROVAL_ID`.
    Review the full JSON and SHA256, then type exactly `UPLOAD` to approve.
 4. Call `upload_running_workout` again with the identical `workout` and returned
    `approval_id`. It consumes approval before authentication and makes one call
    to the library's creation method, returning only workout ID and name.
+   Tool arguments: `{"workout": WORKOUT_OBJECT, "approval_id": "RETURNED_APPROVAL_ID"}`.
+   Success has the shape:
+   `{"ok": true, "status": "uploaded", "workout_id": 1744319670, "workout_name": "MCP Test Workout"}`
+   (a new upload receives its own ID).
 
 Approvals expire ten minutes after request creation and cannot be replayed or
 used for changed payloads. Cancellation/noninteractive input grants nothing.
@@ -225,6 +260,38 @@ The application does not retry uploads (the Garmin library can refresh and retry
 an HTTP 401 internally). Scheduling, modification, deletion and device push are
 not exposed.
 
+After upload, open Garmin Connect > Training & Planning > Workouts and locate
+**MCP Test Workout** (or your chosen name). Open it and check the returned workout
+ID, step order, distances and pace targets; the example above totals 7 km.
+Check Garmin Connect before retrying any upload with an uncertain outcome.
+
+### Common errors
+
+- `uploads_disabled`: the payload is valid but Inspector's Python child is
+  read-only. Restart that connection with `--enable-uploads`.
+- `invalid_input`: check the name, step kinds, positive finite numeric distances
+  and pace, and the inner workout object. Passing the whole builder response,
+  adding server IDs/extra fields or changing the generated schema is rejected.
+  SDK argument-schema failures appear as MCP tool errors instead.
+- STDIO OAuth errors: this local server uses STDIO, not an HTTP OAuth endpoint.
+  Select STDIO and the Python command/arguments above; an Inspector OAuth flow
+  is not Garmin login. Garmin `authentication_required` is separate: refresh
+  saved tokens in a human terminal with `test_garmin.py`, then retry. Never enter
+  credentials into the MCP protocol stream; keep stdout protocol-only.
+- `approval_required`: request/review a fresh approval if absent, expired, used
+  or mismatched. Approval is consumed before authentication, even if that fails.
+
+### Current limitations
+
+The MCP builder accepts 1–100 explicit distance steps in one running segment:
+`warmup`, `interval`, `recovery`, `cooldown`, with open or exact pace targets.
+Distance-based recovery intervals are supported when supplied explicitly; there
+is no automatic recovery insertion or time-based recovery. Heart-rate targets,
+nested repeat blocks, time-based steps and pace ranges are unsupported by this
+builder/validator, even where the installed Garmin library offers them.
+Scheduling, updating, deleting and device push are not exposed by MCP. These
+features are not implemented as part of this documentation update.
+
 ### Automated checks
 
 ```bash
@@ -236,3 +303,8 @@ They cover all tools, privacy filtering, invalid inputs, safe error handling,
 read-only defaults, human approval, expiry, changed payloads, one-use behavior,
 and a real bounded STDIO SDK client test that only calls the offline builder.
 No interactive Garmin authentication or live Garmin API calls are used.
+
+Documentation-update verification (2026-10-28): 38 of 39 automated tests passed;
+`test_real_stdio_offline` timed out during MCP discovery/initialization. This
+local automated result is separate from the successful manual Inspector test
+recorded above. No live Garmin calls were made for this documentation update.

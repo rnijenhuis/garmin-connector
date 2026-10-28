@@ -63,6 +63,22 @@ class MCPToolTests(unittest.TestCase):
         self.api.get_activity.assert_called_once_with(12)
         self.api.get_activity_splits.assert_called_once_with(12)
 
+    def test_activity_http_errors_are_specific_and_sanitized(self):
+        for status, code in ((403, 'activity_access_denied'), (404, 'activity_not_found'),
+                             (500, 'garmin_api_error')):
+            for endpoint in ('get_activity', 'get_activity_splits'):
+                with self.subTest(status=status, endpoint=endpoint):
+                    self.api.reset_mock(side_effect=True)
+                    self.api.get_activity.return_value = {'summaryDTO': {'distance': 1000}}
+                    failure = RuntimeError('private server response')
+                    failure.response = Mock(status_code=status)
+                    getattr(self.api, endpoint).side_effect = failure
+                    result = self.tools.get_activity_details(24849396557)
+                    self.assertEqual(result['error']['code'], code)
+                    self.assertNotIn('private server response', json.dumps(result))
+                    if endpoint == 'get_activity':
+                        self.api.get_activity_splits.assert_not_called()
+
     def test_invalid_input_never_authenticates(self):
         for limit in (0, 51, True, '5', 1.5):
             self.assertEqual(self.tools.get_recent_activities(limit)['error']['code'], 'invalid_input')
