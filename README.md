@@ -288,7 +288,7 @@ The MCP builder accepts 1–100 explicit distance steps in one running segment:
 Distance-based recovery intervals are supported when supplied explicitly; there
 is no automatic recovery insertion or time-based recovery. Heart-rate targets,
 nested repeat blocks, time-based steps and pace ranges are unsupported by this
-builder/validator, even where the installed Garmin library offers them.
+builder/validator, even where the installed Garmin li brary offers them.
 Scheduling, updating, deleting and device push are not exposed by MCP. These
 features are not implemented as part of this documentation update.
 
@@ -304,7 +304,11 @@ read-only defaults, human approval, expiry, changed payloads, one-use behavior,
 and a real bounded STDIO SDK client test that only calls the offline builder.
 No interactive Garmin authentication or live Garmin API calls are used.
 
-Documentation-update verification (2026-10-28): 38 of 39 automated tests passed;
-`test_real_stdio_offline` timed out during MCP discovery/initialization. This
-local automated result is separate from the successful manual Inspector test
-recorded above. No live Garmin calls were made for this documentation update.
+Verification (2026-10-28): all 39 tests passed in 0.746 seconds using the
+command above in a normal host process. The earlier STDIO discovery timeout
+reproduces inside the restricted execution sandbox; the unchanged isolated test
+passes outside it in 0.718 seconds, including server shutdown with exit code 0.
+When running through an agent sandbox, request permission to run the offline
+suite outside that sandbox if this timeout occurs. Keep the existing timeouts
+and real STDIO test; do not skip it or change server security settings. No live
+Garmin calls or dependency reinstalls were needed.
