@@ -11,6 +11,21 @@ Een private connector voor Garmin Connect via vijf MCP-tools: hardloopactiviteit
 - [Technische referentie: CLI, Inspector, payloadvoorbeelden en tests](docs/REFERENCE.md)
 - [Private ChatGPT-integratie](docs/chatgpt-integration.md)
 
+## Snel starten en stoppen op Ubuntu
+
+Na de [eenmalige configuratie](docs/STARTUP.md):
+
+```bash
+./scripts/start-garmin.sh
+./scripts/status-garmin.sh
+./scripts/stop-garmin.sh
+```
+
+De scripts werken ook met een absoluut pad vanuit iedere directory. Start vraagt
+zo nodig verborgen om de runtime-key. Ze gebruiken het bestaande profiel
+`garmin-plus` en wijzigen geen Tailscale- of approvalconfiguratie. Lokale
+readiness bevestigt geen ChatGPT-verbinding; test daarvoor de offline builder.
+
 ## Verificatiestatus
 
 De eigenaar meldt een geslaagde handmatige verbinding met ChatGPT via de tunnel: activiteiten ophalen, een hardlooptraining maken, browsergoedkeuring en upload naar Garmin Connect. De configuratie staat in de installatiehandleiding. Deze documentatieronde herhaalt geen live Garmin-acties. Live kalenderplanning, geavanceerde HR/tijd/herhaalstructuren, mobiele ChatGPT-beschikbaarheid en horlogecompatibiliteit blijven onbevestigd.

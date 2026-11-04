@@ -2,6 +2,31 @@
 
 Begin met de [opstartprocedure](STARTUP.md). Deel nooit API-keys, wachtwoorden, Basic Authorization-headers, approval-ID's, volledige reviewlinks, sessiebestanden of ongeredigeerde logs. Schakel geen raw HTTP-logging of requestcapture in.
 
+## Start-, stop- en statusscripts
+
+Begin met `scripts/status-garmin.sh`; exitcode 1 betekent een onvolledige lokale
+status, niet automatisch een Garmin-fout. Er worden bewust geen proceslogs
+bewaard, zodat tokens of ruwe uitvoer niet op schijf belanden.
+
+| Melding | Herstel |
+|---|---|
+| Ontbrekende afhankelijkheid / Python-omgeving | Controleer PATH voor `python3`, `tunnel-client`, `tailscale` en herstel de bestaande `.venv` volgens INSTALLATION. |
+| API-key ontbreekt | Start in een interactieve terminal en voer de key verborgen in. In automatisering moet de runtime-omgeving hem al veilig aanbieden; geen argument of bestand in de repo. |
+| Tailscale niet verbonden / Serve-route onjuist | Controleer `tailscale status` en `tailscale serve status`; herstel zelf volgens INSTALLATION. Scripts wijzigen geen route. Funnel wordt geweigerd. |
+| Poort 8080 of 8788 bezet | Controleer of een handmatige of systemd-dienst draait. Stop die via diens eigen beheer; scripts nemen onbekende processen niet over. |
+| Onderdeel direct gestopt / starttimeout | Controleer profiel, absolute launcher, browser-authbestand (mode 600), poorten en netwerk. Nieuw gestarte onderdelen worden opgeruimd, reeds beheerde diensten blijven staan. |
+| Bestaande processen reageren niet | Controleer status, stop bewust met het stopscript en start opnieuw. Er is geen automatische retry. |
+| STOPPED/UNMANAGED | Geen geldig eigen procesrecord: proces kan gecrasht zijn of buiten deze scripts draaien. Oude records verlenen geen stoprecht. |
+| Onveilige runtime-directory | Controleer eigenaar en mode 700 van `~/.local/state/garmin-connector-runtime`; gebruik geen symlink of gedeelde map. |
+| Proces stopt niet | Het record blijft behouden als zelfs SIGKILL niet tijdig voltooit; onderzoek lokaal, verwijder geen record om een procesidentiteit te omzeilen. |
+
+Status kan HTTP 404 als OK melden voor de lokale en HTTPS-portalroot; dat is
+verwacht. Een andere server kan ook 404 geven: de controle bewijst geen
+portalidentiteit of werkende authenticatie. De Serve-configuratie en het eigen
+procesrecord worden daarom apart gecontroleerd. Een groen lokaal overzicht
+bevestigt geen OpenAI-accounttoegang: test de offline builder vanuit ChatGPT.
+Bij een latere crash start niets automatisch opnieuw. Na herstel opnieuw starten.
+
 ## `401 mismatched_organization`
 
 Waarschijnlijke oorzaak: de organisatie die de tunnel-client meestuurt past niet bij de runtime-key of tunnelcontext. Dit is een OpenAI-control-plane-fout, geen Garmin-loginfout. Controleer lokaal dat de key voor de bedoelde organisatie is uitgegeven en dat de tunnel daarmee verbonden is. Gebruik de juiste runtime-key; een organisatieheader verleent geen rechten.
