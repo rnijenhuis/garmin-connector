@@ -1,0 +1,15 @@
+# User service template: replace PROJECT_ROOT and APPROVAL_ORIGIN before use.
+[Unit]
+Description=Private Garmin browser approval portal
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=PROJECT_ROOT
+ExecStart=PROJECT_ROOT/.venv/bin/python -m garmin_connector.browser_approval --origin APPROVAL_ORIGIN
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

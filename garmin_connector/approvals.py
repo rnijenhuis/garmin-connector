@@ -31,13 +31,17 @@ class ApprovalStore:
         self.directory = outside_project(directory or '~/.local/state/garmin-connector/approvals')
         self.clock = clock
 
+    validate_payload = staticmethod(validate_workout)
+    confirmation_word = "UPLOAD"
+    confirmation_prompt = "Approve creation of this exact workout? Type UPLOAD: "
+
     def path(self, request_id, suffix):
         if not isinstance(request_id, str) or not re.fullmatch(r'[0-9a-f]{32}', request_id):
             raise ValueError('invalid approval ID')
         return self.directory / f'{request_id}.{suffix}.json'
 
     def request(self, payload):
-        validate_workout(payload)
+        self.validate_payload(payload)
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         request_id = secrets.token_hex(16)
         record = {'payload': payload, 'sha256': fingerprint(payload),
@@ -50,7 +54,7 @@ class ApprovalStore:
     def read(self, request_id, suffix):
         try:
             record = json.loads(self.path(request_id, suffix).read_text())
-            validate_workout(record['payload'])
+            self.validate_payload(record['payload'])
             if self.clock() >= record['expires_at'] or fingerprint(record['payload']) != record['sha256']:
                 raise ValueError('approval expired or payload changed')
             return record
@@ -63,7 +67,7 @@ class ApprovalStore:
         print('SHA256:', record['sha256'])
         if not sys.stdin.isatty():
             raise ValueError('approval requires an interactive terminal')
-        if input('Approve creation of this exact workout? Type UPLOAD: ') != 'UPLOAD':
+        if input(self.confirmation_prompt) != self.confirmation_word:
             print('Approval cancelled.')
             return False
         # Re-read after user input to detect expiry or changes during review.
@@ -72,6 +76,17 @@ class ApprovalStore:
         self.path(request_id, 'pending').rename(self.path(request_id, 'approved'))
         print('Approved for one attempt before the original ten-minute expiry.')
         return True
+
+    def _review_decision(self, request_id, reviewed_sha256, *, approve):
+        """Trusted terminal/browser callers only; never expose as an MCP tool.
+
+        Recheck the original expiry and reviewed digest immediately before the
+        atomic transition. Knowing an ID/hash is not authorization to call this.
+        """
+        record = self.read(request_id, 'pending')
+        if not isinstance(reviewed_sha256, str) or not secrets.compare_digest(record['sha256'], reviewed_sha256):
+            raise ValueError('review does not match pending payload')
+        self.path(request_id, 'pending').rename(self.path(request_id, 'approved' if approve else 'denied'))
 
     def consume(self, request_id, payload):
         record = self.read(request_id, 'approved')
@@ -87,9 +102,15 @@ class ApprovalStore:
 def main():
     parser = argparse.ArgumentParser(description='Review and approve one MCP workout request')
     parser.add_argument('request_id')
+    parser.add_argument('--schedule', action='store_true', help='Review a scheduling request; requires SCHEDULE')
     args = parser.parse_args()
     try:
-        ApprovalStore().approve_interactively(args.request_id)
+        if args.schedule:
+            from .scheduling import ScheduleApprovalStore
+            store = ScheduleApprovalStore()
+        else:
+            store = ApprovalStore()
+        store.approve_interactively(args.request_id)
     except (ValueError, OSError, EOFError, KeyboardInterrupt):
         print('Approval failed or cancelled; no Garmin operation was performed.', file=sys.stderr)
         raise SystemExit(1)

@@ -1,0 +1,17 @@
+# User service template: replace TUNNEL_CLIENT_ABSOLUTE_PATH and configure profile garmin.
+# Create the EnvironmentFile privately (mode 600), never in the repository.
+# It holds CONTROL_PLANE_API_KEY for tunnel-client only. Do not log it.
+[Unit]
+Description=Private Garmin OpenAI Secure MCP Tunnel
+After=network-online.target garmin-browser-approval.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/garmin-connector/tunnel-runtime.env
+ExecStart=TUNNEL_CLIENT_ABSOLUTE_PATH run --profile garmin
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

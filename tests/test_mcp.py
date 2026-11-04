@@ -201,7 +201,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
         async with Client(create_server(tools), read_timeout_seconds=5) as client:
             listed = await client.list_tools()
             self.assertEqual({tool.name for tool in listed.tools}, {
-                'get_recent_activities', 'get_activity_details', 'build_running_workout', 'upload_running_workout'})
+                'get_recent_activities', 'get_activity_details', 'build_running_workout', 'upload_running_workout', 'schedule_running_workout'})
             for name, args in [('get_recent_activities', {}), ('get_activity_details', {'activity_id': 12}),
                                ('build_running_workout', {'name': 'Test', 'steps': [{'kind': 'warmup', 'distance_m': 2000}]})]:
                 result = await client.call_tool(name, args)
@@ -219,7 +219,7 @@ class MCPProtocolTests(unittest.IsolatedAsyncioTestCase):
                 args=['-m', 'garmin_connector.mcp_server'], cwd=str(Path(__file__).resolve().parents[1]))
             async with Client(params, read_timeout_seconds=5) as client:
                 listed = await client.list_tools()
-                self.assertEqual(len(listed.tools), 4)
+                self.assertEqual(len(listed.tools), 5)
                 result = await client.call_tool('build_running_workout', {
                     'name': 'Offline STDIO test', 'steps': [{'kind': 'warmup', 'distance_m': 2000}]})
                 self.assertFalse(result.is_error)
