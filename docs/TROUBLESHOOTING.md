@@ -4,9 +4,7 @@ Begin met de [opstartprocedure](STARTUP.md). Deel nooit API-keys, wachtwoorden, 
 
 ## Start-, stop- en statusscripts
 
-Begin met `scripts/status-garmin.sh`; exitcode 1 betekent een onvolledige lokale
-status, niet automatisch een Garmin-fout. Er worden bewust geen proceslogs
-bewaard, zodat tokens of ruwe uitvoer niet op schijf belanden.
+Begin met `scripts/status-garmin.sh`: exitcode 1 betekent een vastgestelde lokale/transportfout; 2 betekent onvolledige verificatie. Geen van beide betekent automatisch een Garmin-fout. Ruwe proceslogs blijven uitgeschakeld. Alleen vaste diagnosecodes worden bewaard.
 
 | Melding | Herstel |
 |---|---|
@@ -20,12 +18,75 @@ bewaard, zodat tokens of ruwe uitvoer niet op schijf belanden.
 | Onveilige runtime-directory | Controleer eigenaar en mode 700 van `~/.local/state/garmin-connector-runtime`; gebruik geen symlink of gedeelde map. |
 | Proces stopt niet | Het record blijft behouden als zelfs SIGKILL niet tijdig voltooit; onderzoek lokaal, verwijder geen record om een procesidentiteit te omzeilen. |
 
-Status kan HTTP 404 als OK melden voor de lokale en HTTPS-portalroot; dat is
-verwacht. Een andere server kan ook 404 geven: de controle bewijst geen
-portalidentiteit of werkende authenticatie. De Serve-configuratie en het eigen
-procesrecord worden daarom apart gecontroleerd. Een groen lokaal overzicht
-bevestigt geen OpenAI-accounttoegang: test de offline builder vanuit ChatGPT.
-Bij een latere crash start niets automatisch opnieuw. Na herstel opnieuw starten.
+## Wat de controles daadwerkelijk bewijzen
+
+De gemelde storing is achteraf niet causaal bewezen: de oude scripts gooiden
+procesuitvoer weg. Een herstart die helpt past bij een vastgelopen poller of
+MCP-child, maar ook bij een tijdelijke netwerk- of control-plane-storing.
+`/readyz` controleert startupgates, geen volledige ChatGPT-aanroep. Een root-404
+controleert slechts een HTTP-respons, geen portal-login of upload.
+
+De geïnstalleerde tunnel-client v0.0.19 beschrijft dit in
+`tunnel-client help troubleshooting`. Het schema van `/health?details=true`
+(schema_version 1) is offline gecontroleerd met een tijdelijke loopback-daemon,
+fake key en mock control plane, zonder Garmin- of OpenAI-verkeer.
+Zie ook de [officiële tunnelhandleiding](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
+
+| Statuslaag | Bewijs en grens |
+|---|---|
+| Processen | Eigen PID, boot-ID, starttijd en commandhash. Geen netwerkbewijs. |
+| Lokale HTTP | `/proc`-socket moet bij het beheerde proces horen. `/readyz` 200 is alleen `STARTUP_READY`; portalroot 404 alleen `EXPECTED_ROOT_404`. |
+| Private HTTPS | Tailscale-daemon, verwachte Serve-configuratie zonder Funnel en TLS-rootrespons. Bewijst geen browserlogin. |
+| Tunnel control plane | `RECENT_POLL_SUCCESS`: schema 1, snapshot maximaal 15 s oud, laatste succesvolle poll maximaal 90 s oud, polling/ok en nul opeenvolgende fouten. Bewijst recente control-plane-toegang, geen response-delivery of ChatGPT-workspacekoppeling. |
+| Tunnelstoringen | `DISCONNECTED` bij pollfouten/backoff; `AUTH_FAILED` bij 401/403; `STALE` bij oude snapshot/succes; `UNKNOWN` bij ontbrekend/onbekend schema of ontbrekend bewijs. De vaste 90 s-grens veronderstelt de standaard 30 s long-poll; langere aangepaste polling kan conservatief STALE geven. |
+| MCP discovery | `RECENT_DISCOVERY_OBSERVED` vereist recente initialize én complete tools/list in dezelfde healthsnapshot. Het is historisch bewijs; health-reads doen zelf geen MCP-probe. Anders UNVERIFIED/UNKNOWN. |
+| Garmin-authenticatie | Status logt niet in en noemt deze UNVERIFIED. Een geslaagde `get_recent_activities(limit=1)` vanuit ChatGPT bewijst toegang op dat moment. Geen upload als loginprobe. |
+| End-to-end MCP | Laat ChatGPT via de private plugin een `build_running_workout` bouwen, bijvoorbeeld één interval van 1000 m. Alleen een ontvangen correct resultaat verifieert die aanroep; het bewijst geen Garmin-write. Een los lokaal gestart MCP-proces test de tunnel niet. |
+
+Onbekende/nieuwe healthschemas falen conservatief. Status print of bewaart geen
+ruwe health-JSON, foutmeldingen of metadata uit het tunnelproces.
+De statuscode blijft 2 als alle lokale controles en polling slagen: de scripts
+kunnen de actuele ChatGPT-context en Garmin-toegang niet zelfstandig bewijzen.
+
+## Veilige diagnosegeschiedenis en herstel
+
+`scripts/status-garmin.sh --watch` observeert iedere 30 seconden en bewaart
+pollstatuscodes. Stop met Ctrl-C. Deze observer draait op de voorgrond, start of
+stopt geen diensten en houdt de lifecycle-lock niet vast. Zonder observer of
+statusaanroep is er geen continue tunnelgeschiedenis; fouten tussen twee
+metingen kunnen worden gemist.
+
+De startscripts zetten `GARMIN_DIAGNOSTICS=1` voor portal en MCP-child. Bij een
+andere launcher kan de eigenaar dit expliciet instellen. Herstart reeds draaiende
+diensten bewust om nieuwe code en deze instelling te laden. De vaste records
+staan in `~/.local/state/garmin-connector-runtime/diagnostics.jsonl` (directory
+700, bestand 600, ongeveer 1 MiB begrensd; bij overschrijding wordt de historie
+leeggemaakt). Ze bevatten uitsluitend Unix-tijd, PID, operation en outcome uit
+vaste lijsten: onder meer authentication_required, authentication_failed,
+approval_error/approval_required, upload_outcome_unknown en pollstatus.
+Geen keys, tokens, wachtwoorden, approval-ID/hash/CSRF, URLs, namen, payloads,
+activiteitsgegevens of exceptionteksten. Normale browser-authchallenges worden
+niet als fout gelogd; onjuiste aangeleverde credentials wel. Diagnose-I/O-fouten
+veranderen toolresultaten of toestemming niet. Geen toegang tot browserreview
+als agent en geen raw HTTP/capture inschakelen.
+
+Een vastgelopen verbinding herstelt mogelijk door de ingebouwde pollbackoff;
+het geïnstalleerde clientprogramma ondersteunt ook interne STDIO-child-restart
+(`--mcp.stdio-failure-policy`, standaard restart). De lokale mocktest bevestigde
+pollbackoff, geen live herstel. Er is bewust geen extra automatische watchdog:
+een herstart kan een lopende upload onderbreken en het resultaat onzeker maken.
+De systemd-template herstart alleen na procesfalen, detecteert geen live hang.
+
+Bij STALE/DISCONNECTED: observeer meerdere metingen en controleer netwerk/slaapstand.
+Bij AUTH_FAILED: controleer runtime-key en organisatie privé, geen Garmin-loginreset
+als oplossing voor een OpenAI-401. Als transport recent is maar de offline builder
+faalt: controleer MCP-discovery, pluginselectie, workspace en gekoppelde tunnel.
+Als herstel nodig blijft: controleer eerst eventuele onzekere writes in Garmin
+Connect, stop/start bewust en test vervolgens uitsluitend de offline builder en
+een read. Dit is transportherstel, nooit een uploadretry. Herhaal nooit automatisch
+een upload of planning, maak niet automatisch vervangende approvals en verwijder
+geen attemptrecords. Originele expiry, payloadbinding en single-use blijven gelden.
+Een nieuwe write vereist menselijke reconciliatie en geldige afzonderlijke consent.
 
 ## `401 mismatched_organization`
 

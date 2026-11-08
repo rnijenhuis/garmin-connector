@@ -3,6 +3,7 @@
 MCP may return review URLs, but cannot authenticate to this portal or approve.
 Run behind private HTTPS (e.g. a tailnet reverse proxy), never public ingress.
 """
+from .diagnostics import event
 import argparse
 import base64
 from collections import deque
@@ -130,6 +131,7 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
         # A normal unauthenticated browser challenge should not spend the limit.
         if request.headers.get('authorization'):
             failed_logins.append(now)
+            event("portal", "authentication_failed")
         return False
 
     async def review(request: Request):
@@ -138,6 +140,7 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
                             headers={**headers, 'WWW-Authenticate': 'Basic realm="Garmin workout approval", charset="UTF-8"'})
         # Do not trust forwarded headers or a caller-supplied Host for links/CSRF.
         if request.url.hostname != urlsplit(origin).hostname:
+            event('portal', 'approval_error')
             return Response('Invalid host.', status_code=400, headers=headers)
         operation = request.path_params['operation']
         request_id = request.path_params['request_id']
@@ -148,18 +151,22 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
             record = store.read(request_id, 'pending')
             if request.method == 'POST':
                 if request.headers.get('origin') != origin:
+                    event('portal', 'approval_error')
                     return Response('Invalid origin.', status_code=403, headers=headers)
                 if request.headers.get('content-type', '').split(';')[0] != 'application/x-www-form-urlencoded':
+                    event('portal', 'approval_error')
                     return Response('Invalid form.', status_code=400, headers=headers)
                 body = bytearray()
                 async for chunk in request.stream():
                     body.extend(chunk)
                     if len(body) > 2048:
+                        event('portal', 'approval_error')
                         return Response('Form too large.', status_code=413, headers=headers)
                 form = parse_qs(body.decode(), strict_parsing=True)
                 if (set(form) != {'csrf', 'sha256', 'decision'} or any(len(values) != 1 for values in form.values())
                         or form['decision'][0] not in ('approve', 'deny')
                         or not hmac.compare_digest(form['csrf'][0], csrf(operation, request_id, record))):
+                    event('portal', 'approval_error')
                     return Response('Invalid confirmation.', status_code=403, headers=headers)
                 store._review_decision(request_id, form['sha256'][0], approve=form['decision'][0] == 'approve')
                 message = 'Approved for one attempt before the original expiry.' if form['decision'][0] == 'approve' else 'Denied. No Garmin change authorized.'
@@ -183,6 +190,7 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
                        f'<p>This page grants consent only. ChatGPT must continue the operation; no Garmin API is called here.</p></body></html>')
             return HTMLResponse(content, headers=headers)
         except (ValueError, OSError, KeyError, TypeError, UnicodeError):
+            event('portal', 'approval_error')
             return Response('Request unavailable, expired, changed or already reviewed.', status_code=409, headers=headers)
 
     return Starlette(routes=[Route('/review/{operation}/{request_id}', review, methods=['GET', 'POST'])])

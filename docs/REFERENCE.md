@@ -483,3 +483,35 @@ De verplichte suite `timeout 45s .venv/bin/python -m unittest discover -s tests 
 CLI-help gecontroleerd voor `main.py`, MCP-server, approval-CLI, browserportal en tunnel-client init/run/doctor; clientversie 0.0.19 en Python 3.14.4 lokaal bevestigd. Tailscale Serve-status alleen gelezen: private HTTPS-root proxy naar 127.0.0.1:8788. Lokale Markdown-bestandslinks en `git diff --check` gecontroleerd. Geen profielbestanden/geheimen uitgelezen en geen echte reviewpagina, Garmin-authenticatie, upload of planning als verificatie uitgevoerd.
 
 Open: huidig tunnelprofiel en account-/tailnetrechten zijn niet volledig geaudit; nieuwe Ubuntu-installatie, mobiele ChatGPT, live kalenderplanning en geavanceerde Garmin-/horlogeondersteuning zijn niet opnieuw of nog niet geverifieerd. De template voor de tunnel-userdienst gebruikt profiel `garmin`, terwijl de werkende handmatige opzet `garmin-plus` gebruikt; de installatiehandleiding vermeldt de lokale aanpassing.
+
+
+### Hartslag en loopcadans in `get_activity_details`
+
+Zowel `activity` als ieder object in `laps` bevat deze aanvullende velden.
+Bestaande afstand-, duur-, ID- en rondevelden blijven behouden.
+
+| Uitvoerveld | Garmin-bronveld in `summaryDTO` / `lapDTOs` | Eenheid |
+| --- | --- | --- |
+| `average_heart_rate_bpm` | `averageHR` | bpm |
+| `max_heart_rate_bpm` | `maxHR` | bpm |
+| `average_running_cadence_spm` | `averageRunCadence` | totale stappen/min |
+| `max_running_cadence_spm` | `maxRunCadence` | totale stappen/min |
+
+Ontbrekende of expliciet null bronwaarden worden JSON `null`, nooit een
+verzonnen 0. Expliciete bronwaarde 0 blijft 0. Decimalen blijven behouden.
+Bij een vlakke activiteitrespons worden dezelfde bronvelden gebruikt.
+De Garmin detail- en lapvelden bevatten al de totale loopcadans van beide
+voeten: er wordt **niet verdubbeld**, ook niet bij lage waarden. Deze mapping
+gebruikt geen FIT-cadans, generieke fietscadans of op waarde gebaseerde heuristiek.
+Garmin definieert loopcadans als stappen per minuut met beide voeten:
+[Garmin Support](https://support.garmin.com/en-HK/?faq=S6QyNSOVQv5AqnwgocFpz5).
+
+Op 4 november 2026 alleen-lezen gecontroleerd met activiteit 24968477985:
+de detailrespons en alle 13 rondes bevatten `averageHR`, `maxHR`,
+`averageRunCadence` en `maxRunCadence`. De activiteit geeft 141/163 bpm en
+164,4375/188 stappen/min; dit bevestigt dat verdubbelen hier onjuist is.
+De lokale bijgewerkte mapping is op deze activiteit gecontroleerd; een reeds
+lopende MCP-server moet de gewijzigde code opnieuw laden voordat de gekoppelde
+tool deze velden teruggeeft.
+Alleen expliciet toegestane velden komen in de toolrespons; geen ruwe respons,
+GPS, namen, profielgegevens of credentials.

@@ -51,7 +51,7 @@ def create_server(service=None):
 
     @server.tool(structured_output=True, annotations=read)
     def get_activity_details(activity_id: StrictInt) -> dict[str, Any]:
-        """Return activity summary and laps without GPS, names or profile data."""
+        """Return activity summary and laps with average/max heart rate (bpm) and running cadence (total steps/min, both feet). Missing metrics are null. No GPS, names or profile data."""
         return service.get_activity_details(activity_id)
 
     @server.tool(structured_output=True, annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))

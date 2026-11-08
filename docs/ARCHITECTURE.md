@@ -23,7 +23,7 @@ De OpenAI Tunnel gebruikt uitgaande HTTPS en start de lokale MCP-server over STD
 | Tool | Verantwoordelijkheid |
 |---|---|
 | `get_recent_activities(limit=5)` | Recente hardloopactiviteiten; integerlimiet 1–50, alleen ID, afstand in km en duur in seconden. |
-| `get_activity_details(activity_id)` | Positief integer-ID; afstand/duur en laps met index, meters en seconden. |
+| `get_activity_details(activity_id)` | Positief integer-ID; afstand/duur en laps met index, meters en seconden; activiteit én laps bevatten gemiddelde/maximale hartslag (bpm) en loopcadans (totale stappen/min), ontbrekend als null. |
 | `build_running_workout(name, steps, for_upload=false)` | Volledig offline gevalideerde Garmin-dictionary bouwen; normale uitvoer `{ok: true, workout: ...}`. `for_upload=true` geeft precies `{workout: ...}` voor Inspector. |
 | `upload_running_workout(workout, approval_id=null)` | Eerst pending review aanmaken; daarna met identieke payload en oorspronkelijke, goedgekeurde ID eenmaal een **nieuwe** template aanmaken. Vereist `--enable-uploads`. |
 | `schedule_running_workout(workout_id, date, approval_id=null)` | Bestaande hardlooptemplate afzonderlijk op strikte geldige `YYYY-MM-DD` zetten, na eigen review. Vereist `--enable-scheduling`; uploadt niets. |

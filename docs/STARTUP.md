@@ -36,7 +36,7 @@ ook voordat Garmin-code wordt geladen.
 
 Het achtergrondproces erft een eigen omgevingskopie, zodat de sleutel na het
 sluiten van het startscript beschikbaar blijft. De scripts schrijven die nooit
-naar schijf, printen hem niet en bewaren geen proceslogs. Procesuitvoer wordt
+naar schijf, printen hem niet en bewaren geen ruwe proceslogs. Alleen vaste diagnosecodes worden bewaard (zie TROUBLESHOOTING). Procesuitvoer wordt
 weggegooid. De key blijft in procesgeheugen/omgeving: root en processen met
 voldoende rechten binnen hetzelfde gebruikersaccount kunnen die mogelijk lezen.
 Gebruik daarom alleen het eigen, vertrouwde account. Geen automatische herstart
@@ -58,14 +58,13 @@ Gelijktijdige opdrachten wachten op dezelfde vergrendeling.
 
 ## Gereedheid controleren
 
-Status toont afzonderlijk beheerde processen, Tailscale, HTTP 200 op
+Status toont afzonderlijk beheerde processen, Tailscale, recente control-plane polling, historische MCP-discovery, onbevestigde Garmin-authenticatie en end-to-end MCP, HTTP 200 op
 `http://127.0.0.1:8080/readyz`, de lokale portal en private HTTPS-route.
 De portal heeft geen homepage: HTTP 404 op `/` is hier de verwachte respons;
 het bewijst bereikbaarheid, geen geslaagde login of review. TLS-validatie blijft
 aan, redirects worden niet gevolgd en er worden geen credentials meegestuurd.
 Serve moet HTTPS op 443 naar `http://127.0.0.1:8788` routeren zonder Funnel.
-Onbekende JSON-configuratie wordt geweigerd. Exitstatus 0 betekent alle lokale
-controles geslaagd, 1 betekent fout of onvolledige status.
+Onbekende JSON-configuratie wordt geweigerd. Exitstatus 1 betekent een aangetoonde lokale/transportfout; 2 betekent onvolledige verificatie, ook als alle lokale controles slagen. Er wordt geen algemeen groen resultaat afgegeven zonder end-to-end bewijs.
 
 Een draaiend proces of HTTP 200 bewijst geen OpenAI- of ChatGPT-verbinding.
 Test die zelf met een offline `build_running_workout` vanuit de private

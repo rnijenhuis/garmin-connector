@@ -1,5 +1,6 @@
 """MCP application layer. All Garmin clients are injected and lazily obtained."""
 from copy import deepcopy
+from .diagnostics import observed
 from garminconnect import GarminConnectAuthenticationError
 from .activities import activity_summary
 from .approvals import ApprovalStore, outside_project, fingerprint
@@ -30,6 +31,15 @@ def safe_summary(activity):
             'duration_seconds': activity.get('duration')}
 
 
+def running_metrics(metrics):
+    """Garmin detail/lap run cadence already counts both feet; never double it."""
+    return {output: metrics.get(source) for output, source in (
+        ('average_heart_rate_bpm', 'averageHR'),
+        ('max_heart_rate_bpm', 'maxHR'),
+        ('average_running_cadence_spm', 'averageRunCadence'),
+        ('max_running_cadence_spm', 'maxRunCadence'))}
+
+
 class GarminTools:
     def __init__(self, client_factory=saved_session_client, approvals=None, enable_uploads=False,
                  schedule_approvals=None, enable_scheduling=False, browser_approval_origin=None):
@@ -52,6 +62,7 @@ class GarminTools:
             result.update(workout_id=payload['workout_id'], date=payload['date'])
         return result
 
+    @observed
     def get_recent_activities(self, limit=5):
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             return error('invalid_input', 'limit must be an integer from 1 to 50')
@@ -64,6 +75,7 @@ class GarminTools:
         except Exception:
             return error('garmin_api_error', 'Could not retrieve running activities.')
 
+    @observed
     def get_activity_details(self, activity_id):
         try:
             positive_id(activity_id)
@@ -75,11 +87,13 @@ class GarminTools:
             splits = client.get_activity_splits(activity_id) or {}
             metrics = activity.get('summaryDTO') or activity
             # Explicit field allowlist: never return raw activity or lap objects.
-            laps = [{key: lap[key] for key in ('lapIndex', 'distance', 'duration') if key in lap}
+            laps = [{**{key: lap[key] for key in ('lapIndex', 'distance', 'duration') if key in lap},
+                     **running_metrics(lap)}
                     for lap in splits.get('lapDTOs', [])]
             return {'ok': True, 'activity': {'activity_id': activity_id,
                     'distance_m': metrics.get('distance'),
-                    'duration_seconds': metrics.get('duration')}, 'laps': laps}
+                    'duration_seconds': metrics.get('duration'),
+                    **running_metrics(metrics)}, 'laps': laps}
         except GarminConnectAuthenticationError:
             return error('authentication_required', 'Refresh your saved Garmin session in a separate terminal.')
         except Exception as exc:
@@ -90,6 +104,7 @@ class GarminTools:
                 return error('activity_not_found', 'Garmin could not find an accessible activity with this ID.')
             return error('garmin_api_error', 'Could not retrieve activity details.')
 
+    @observed
     def build_running_workout(self, name, steps, for_upload=False):
         try:
             if not isinstance(for_upload, bool):
@@ -104,6 +119,7 @@ class GarminTools:
         except (ValueError, TypeError, KeyError):
             return error('invalid_input', 'Provide a name and valid distance/time steps or repeat blocks, with one optional pace or heart-rate target.')
 
+    @observed
     def upload_running_workout(self, workout, approval_id=None):
         try:
             payload = deepcopy(workout)
@@ -139,6 +155,7 @@ class GarminTools:
             return error('upload_outcome_unknown', 'Check Garmin Connect before retrying. Approval consumed; no automatic retry.')
 
 
+    @observed
     def schedule_running_workout(self, workout_id, date, approval_id=None):
         try:
             payload = scheduling_payload(workout_id, date)

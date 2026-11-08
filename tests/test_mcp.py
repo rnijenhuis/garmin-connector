@@ -58,10 +58,45 @@ class MCPToolTests(unittest.TestCase):
         self.api.get_activity_splits.return_value = {'lapDTOs': [
             {'lapIndex': 1, 'distance': 1000, 'duration': 300, 'startLongitude': 4}], 'ownerId': 99}
         result = self.tools.get_activity_details(12)
-        self.assertEqual(result['activity'], {'activity_id': 12, 'distance_m': 7000, 'duration_seconds': 2400})
-        self.assertEqual(result['laps'], [{'lapIndex': 1, 'distance': 1000, 'duration': 300}])
+        missing = dict.fromkeys(('average_heart_rate_bpm', 'max_heart_rate_bpm',
+                                 'average_running_cadence_spm', 'max_running_cadence_spm'))
+        self.assertEqual(result['activity'], {'activity_id': 12, 'distance_m': 7000, 'duration_seconds': 2400, **missing})
+        self.assertEqual(result['laps'], [{'lapIndex': 1, 'distance': 1000, 'duration': 300, **missing}])
         self.api.get_activity.assert_called_once_with(12)
         self.api.get_activity_splits.assert_called_once_with(12)
+
+    def test_running_metrics_mapping_without_cadence_doubling(self):
+        for cadence in (82.25, 164.4375, 0, None):
+            for wrapped in (True, False):
+                with self.subTest(cadence=cadence, wrapped=wrapped):
+                    metrics = {'averageHR': 141, 'maxHR': 163,
+                               'averageRunCadence': cadence, 'maxRunCadence': 188,
+                               'startLatitude': 52, 'ownerId': 99}
+                    self.api.get_activity.return_value = {'summaryDTO': metrics} if wrapped else metrics
+                    self.api.get_activity_splits.return_value = {'lapDTOs': [{
+                        'lapIndex': 1, 'averageHR': 131, 'maxHR': 140,
+                        'averageRunCadence': cadence, 'maxRunCadence': 174,
+                        'startLongitude': 4}]}
+                    result = self.tools.get_activity_details(12)
+                    for record, avg, maximum, max_cadence in (
+                            (result['activity'], 141, 163, 188),
+                            (result['laps'][0], 131, 140, 174)):
+                        self.assertEqual(record['average_heart_rate_bpm'], avg)
+                        self.assertEqual(record['max_heart_rate_bpm'], maximum)
+                        self.assertEqual(record['average_running_cadence_spm'], cadence)
+                        self.assertEqual(record['max_running_cadence_spm'], max_cadence)
+                    for private in ('ownerId', 'Latitude', 'Longitude'):
+                        self.assertNotIn(private, json.dumps(result))
+
+    def test_partial_null_running_metrics(self):
+        self.api.get_activity.return_value = {'summaryDTO': {'averageHR': None, 'maxHR': 150}}
+        self.api.get_activity_splits.return_value = {'lapDTOs': [{'maxHR': 150, 'averageRunCadence': None}]}
+        result = self.tools.get_activity_details(12)
+        for record in (result['activity'], result['laps'][0]):
+            self.assertIsNone(record['average_heart_rate_bpm'])
+            self.assertEqual(record['max_heart_rate_bpm'], 150)
+            self.assertIsNone(record['average_running_cadence_spm'])
+            self.assertIsNone(record['max_running_cadence_spm'])
 
     def test_activity_http_errors_are_specific_and_sanitized(self):
         for status, code in ((403, 'activity_access_denied'), (404, 'activity_not_found'),
