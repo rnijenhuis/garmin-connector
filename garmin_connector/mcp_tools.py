@@ -42,7 +42,7 @@ def running_metrics(metrics):
 
 class GarminTools:
     def __init__(self, client_factory=saved_session_client, approvals=None, enable_uploads=False,
-                 schedule_approvals=None, enable_scheduling=False, browser_approval_origin=None):
+                 schedule_approvals=None, enable_scheduling=False, browser_approval_origin=None, combined_approvals=None):
         if browser_approval_origin is not None:
             from .browser_approval import approval_origin
             browser_approval_origin = approval_origin(browser_approval_origin)
@@ -52,6 +52,7 @@ class GarminTools:
         self.enable_uploads = enable_uploads
         self.schedule_approvals = schedule_approvals if schedule_approvals is not None else ScheduleApprovalStore()
         self.enable_scheduling = enable_scheduling
+        self.combined_approvals = combined_approvals
 
     def _browser_approval(self, operation, request_id, payload):
         result = {'ok': True, 'status': 'approval_required', 'approval_id': request_id,
@@ -203,3 +204,26 @@ class GarminTools:
             return {'ok': True, 'status': 'scheduled', 'workout_id': workout_id, 'date': date}
         except Exception:
             return error('schedule_outcome_unknown', 'Check Garmin Connect before any further attempt. Approval consumed and attempt recorded; no automatic retry.')
+
+    @observed
+    def upload_and_schedule_running_workout(self, workout, date, approval_id=None):
+        from .combined import combined_payload, execute
+        try:
+            payload = combined_payload(deepcopy(workout), date)
+        except (ValueError, TypeError, KeyError):
+            return error('invalid_input', 'Provide a valid running workout and explicit YYYY-MM-DD date.')
+        if not self.enable_uploads:
+            return error('uploads_disabled', 'Restart with --enable-uploads.')
+        if not self.enable_scheduling:
+            return error('scheduling_disabled', 'Restart with --enable-scheduling.')
+        if not self.browser_approval_origin or self.combined_approvals is None:
+            return error('browser_approval_required', 'Combined operation requires configured browser approval mode.')
+        try:
+            if approval_id is None:
+                request_id = self.combined_approvals.request(payload)
+                result = self._browser_approval('upload-and-schedule', request_id, payload)
+                result['date'] = date
+                return result
+            return execute(self, payload, approval_id)
+        except (ValueError, OSError, KeyError, TypeError):
+            return error('approval_or_state_unavailable', 'Matching unexpired browser consent and durable state are required. If a write may have started, reconcile Garmin manually; never retry blindly or delete progress/attempt records.')

@@ -32,7 +32,7 @@ RepeatInput.model_rebuild()
 def create_server(service=None):
     service = service if service is not None else GarminTools()
     instructions = ('Use the offline builder before upload; summarize steps, targets and concrete calendar date for the user. '
-                    'Upload and schedule are separate changes requiring separate expiring approvals. Never approve for the user or automatically retry writes. '
+                    'For preparing a workout for a day, prefer upload_and_schedule_running_workout after offline building. ONE browser approval covers BOTH actions. Completion requires scheduled with the correct date. Standalone tools retain separate approvals. Never approve for the user or automatically retry writes. '
                     'Resolve relative dates with the user timezone. Pass the inner workout and the returned workout ID between tools; do not ask users to copy JSON. '
                     'Scheduling does not send to a device: instruct the user to sync/send via Garmin Connect for their Forerunner 645. ')
     if service.browser_approval_origin:
@@ -71,6 +71,12 @@ def create_server(service=None):
         """Schedule an existing running workout on YYYY-MM-DD after separate human approval; in browser mode show approval_url and wait. Never upload implicitly."""
         return service.schedule_running_workout(workout_id, date, approval_id)
 
+    @server.tool(structured_output=True, annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
+                                            idempotentHint=False, openWorldHint=True))
+    def upload_and_schedule_running_workout(workout: dict, date: str, approval_id: str | None = None) -> dict[str, Any]:
+        """Prepare ONE browser approval for BOTH upload and scheduling on YYYY-MM-DD. Show link and wait. Repeat identical workout/date with original approval_id after human consent. Only scheduled means complete; then remind user to sync Garmin Connect. Explicit resume reuses progress within original expiry; after expiry obtain fresh browser consent for identical workout/date. Unknown uploads never retry; uncertain scheduling only rechecks calendar. No automatic retry or replacement approval."""
+        return service.upload_and_schedule_running_workout(workout, date, approval_id)
+
     return server
 
 
@@ -93,7 +99,7 @@ def main():
         except ValueError:
             parser.error('browser mode requires --approval-origin with a private HTTPS origin')
         stores = browser_stores()
-        options = dict(approvals=stores['upload'], schedule_approvals=stores['schedule'], browser_approval_origin=origin)
+        options = dict(combined_approvals=stores['upload-and-schedule'], approvals=stores['upload'], schedule_approvals=stores['schedule'], browser_approval_origin=origin)
     elif args.approval_origin:
         parser.error('--approval-origin requires --approval-mode browser')
     create_server(GarminTools(enable_uploads=args.enable_uploads, enable_scheduling=args.enable_scheduling, **options)).run(transport='stdio')

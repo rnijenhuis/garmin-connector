@@ -7,13 +7,13 @@ import stat
 import time
 
 OPERATIONS = {'get_recent_activities', 'get_activity_details', 'build_running_workout',
-              'upload_running_workout', 'schedule_running_workout', 'portal', 'runtime'}
+              'upload_running_workout', 'schedule_running_workout', 'upload_and_schedule_running_workout', 'portal', 'runtime'}
 OUTCOMES = {'success', 'approval_required', 'authentication_required', 'garmin_api_error',
             'invalid_input', 'uploads_disabled', 'scheduling_disabled', 'upload_outcome_unknown',
             'schedule_outcome_unknown', 'schedule_check_failed', 'schedule_attempt_exists',
             'invalid_workout', 'activity_access_denied', 'activity_not_found',
             'uploaded', 'scheduled', 'already_scheduled', 'authentication_failed',
-            'approval_error', 'tunnel_recent', 'tunnel_stale', 'tunnel_disconnected', 'tunnel_unknown'}
+            'progress_unavailable', 'browser_approval_required', 'approval_or_state_unavailable', 'approval_error', 'tunnel_recent', 'tunnel_stale', 'tunnel_disconnected', 'tunnel_unknown'}
 
 
 def directory():

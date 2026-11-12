@@ -2,13 +2,14 @@
 
 ## Architecture
 
-- `mcp_server.py` exposes five tools through the official Python MCP SDK over
+- `mcp_server.py` exposes six tools through the official Python MCP SDK over
   STDIO. Inspector launches its own Python child process. Keep stdout reserved
   for protocol messages; startup/import must not authenticate or contact Garmin.
 - `mcp_tools.py` implements `get_recent_activities` (running summaries),
   `get_activity_details` (summary and laps), `build_running_workout` (offline
   JSON), `upload_running_workout` (prepare approval, then create once), and
-  `schedule_running_workout` (approve an existing workout ID/date, then schedule).
+  `schedule_running_workout` (approve an existing workout ID/date, then schedule),
+  and browser-only `upload_and_schedule_running_workout` (one explicit combined consent).
   Garmin clients are injected/lazily obtained; MCP uses saved sessions only.
 - `workouts.py` builds plain dictionaries; `upload.py` validates the supported
   schema; `approvals.py` owns payload-bound human approval state (terminal by default).
@@ -72,12 +73,16 @@
 - Browser state is namespaced separately from terminal state. The scheduling
   attempt ledger remains shared across modes. Preserve original ten-minute
   expiry, SHA256 payload binding and atomic single use before authentication.
-  No change may silently approve later upload/schedule steps. The portal itself
+  Standalone consent never authorizes later upload/schedule steps. Combined browser
+  consent explicitly covers both steps for the exact workout/date only. The portal itself
   never calls Garmin. Tests may simulate human actions only in temporary state.
 - ChatGPT instructions must route summary → user review link → wait → same
   arguments + original approval ID. No manual JSON copying, automatic retry or
-  self-approval. Upload and calendar scheduling are separate changes; watch
-  synchronization remains a user action. Never claim a workout is on the watch.
+  self-approval. Prefer the combined tool for "training klaarzetten voor een dag"
+  only after runtime/tool discovery has actually updated. Completion requires
+  `scheduled` for the correct date; then remind the user to sync Garmin Connect.
+  Standalone upload/calendar tools retain separate consent; watch synchronization
+  remains a user action. Never claim a workout is on the watch.
 - This is single-owner/private only: no public OAuth service or multi-user Garmin
   mapping exists. Never publish/expose it or share its tunnel in a multi-user
   workspace. Account-side setup and safe ChatGPT tool calls must be observed
@@ -113,3 +118,21 @@
 - Never perform live Garmin uploads or scheduling during automated tests. Inject mocked Garmin
   clients and temporary approval directories. STDIO integration checks must use
   offline operations; never use live authentication/API calls as a test fixture.
+
+## Combined upload and scheduling
+
+- Both enable flags and browser mode are required. `combined.py` hashes the exact
+  operation/workout/date with the existing canonical SHA256; no Garmin calls on
+  preparation. Never expose terminal or model approval for this operation.
+- The payload-keyed, process-locked journal is shared by all combined approval
+  IDs. Atomically replace and fsync progress before writes and persist the returned
+  workout ID immediately. Never reupload an attempted/uncertain upload. Keep the
+  scheduling attempt ledger shared with standalone/terminal modes.
+- Consumed combined consent authorizes explicit resumption of only missing work
+  until the ORIGINAL ten-minute expiry. Recheck before each new write. After
+  expiry the human must request/review fresh browser consent for identical inputs;
+  the same journal prevents duplicate upload. Never create replacement consent
+  or retry automatically. Unknown scheduling permits read-only reconciliation,
+  never another POST. Unknown upload requires manual Garmin reconciliation.
+- Never delete/alter journals or attempt records to bypass protection. Remote
+  manual races cannot be eliminated; live combined acceptance remains unverified.

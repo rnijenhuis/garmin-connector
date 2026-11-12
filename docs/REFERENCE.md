@@ -515,3 +515,26 @@ lopende MCP-server moet de gewijzigde code opnieuw laden voordat de gekoppelde
 tool deze velden teruggeeft.
 Alleen expliciet toegestane velden komen in de toolrespons; geen ruwe respons,
 GPS, namen, profielgegevens of credentials.
+
+## Combined browser tool (sixth MCP tool)
+
+`upload_and_schedule_running_workout(workout, date, approval_id=null)` accepts the
+complete inner offline builder payload and an explicit valid YYYY-MM-DD date.
+Both enable flags and browser mode are required. Without approval_id it ONLY
+prepares consent. Present the review link, wait for independent owner browser
+consent, then repeat identical arguments with the original ID. Chat yes, model
+booleans, native tool confirmation and terminal approval cannot authorize it.
+
+Only `{ok: true, status: scheduled, workout_id: ..., date: ...}` completes a day
+preparation request. Then remind the user to synchronize via Garmin Connect.
+The existing standalone tools keep their own consent and behavior. Do not use
+this new tool until runtime restart AND actual tool discovery have updated.
+
+Durable operation-keyed progress supports explicit missing-step resumption with
+consumed consent until its original expiry, fresh browser consent thereafter.
+Identical inputs and fresh consent reuse the same journal, never repeat upload.
+An uncertain upload blocks all further uploads for this operation. Scheduling
+POST attempts use the shared ledger; uncertain scheduling only rechecks calendar,
+never reposts. Manual reconciliation is required if still unconfirmed. No
+MCP reset, automatic retry, or state deletion. See STARTUP for restart commands
+and recovery. Combined execution is offline/mock verified only.

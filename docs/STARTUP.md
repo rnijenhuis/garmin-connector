@@ -76,12 +76,41 @@ geverifieerd. Zie ook de [officiële tunnelhandleiding](https://developers.opena
 
 1. Vraag ChatGPT om recente hardloopactiviteiten of details/laps op te halen. Dit gebruikt de opgeslagen Garmin-sessie en geeft alleen gefilterde trainingsgegevens terug.
 2. Laat een gestructureerde hardlooptraining bouwen. Controleer naam, volgorde, afstand/tijdsduur en tempo- of hartslagdoelen. Dit bouwen is offline.
-3. Vraag expliciet om upload naar Garmin Connect. ChatGPT gebruikt het innerlijke `workout`-object; je hoeft geen JSON te kopiëren.
-4. MCP maakt een lokaal pending verzoek en retourneert een reviewlink naar de Browser Approval Server. Er is nog geen upload of authenticatie voor die schrijfactie.
-5. Open de link zelf via Tailscale HTTPS, log in als `owner` en beoordeel de exacte actie, payload, SHA256 en vervaltijd. Klik alleen bij akkoord op de actiespecifieke goedkeuring. ChatGPT mag deze pagina nooit voor je bedienen.
-6. Ga terug naar ChatGPT en zeg dat het mag doorgaan. ChatGPT roept dezelfde uploadtool aan met **identieke argumenten en de oorspronkelijke approval ID**. Pas nu wordt toestemming eenmaal verbruikt en de upload uitgevoerd. Controleer de status `uploaded`, workout-ID en naam; open Garmin Connect om de training te controleren.
-7. Vraag desgewenst afzonderlijk om deze bestaande workout-ID op een concrete datum in te plannen. Controleer de datum in `Europe/Amsterdam` (exact `YYYY-MM-DD`). Hiervoor volgt een nieuwe, afzonderlijke browsergoedkeuring en daarna dezelfde planningaanroep met diens oorspronkelijke ID. Live planning blijft nog onbevestigd.
-8. Open Garmin Connect, stuur de training waar ondersteund naar je horloge en synchroniseer. Controleer de training op het horloge. De connector doet geen device-push en kan niet bevestigen dat de training op het horloge staat.
+3. Voor **training klaarzetten voor een dag** gebruikt ChatGPT bij voorkeur `upload_and_schedule_running_workout` met de volledige innerlijke `workout` en een expliciete datum (`YYYY-MM-DD`, bepaald in `Europe/Amsterdam`). Gebruik deze actie pas nadat de services zijn herstart en de nieuwe tool daadwerkelijk in ChatGPT beschikbaar is.
+4. Zonder `approval_id` maakt MCP uitsluitend een lokaal verzoek. De reviewlink toont naam, alle stappen/doelen, berekenbare totalen en datum. De pagina vraagt duidelijk toestemming voor **zowel uploaden als inplannen**.
+5. Open de link zelf via private HTTPS, log in als `owner` en keur alleen goed als alles klopt. ChatGPT mag de pagina nooit voor je bedienen. Een chatbericht “ja” vervangt de browsergoedkeuring niet.
+6. Ga terug naar ChatGPT en vraag door te gaan. ChatGPT gebruikt dezelfde gecombineerde tool met **identieke workout, datum en oorspronkelijke approval ID**.
+7. De opdracht is pas afgerond bij **`status: scheduled` met de juiste datum en workout-ID**. `uploaded_not_scheduled` betekent dat de upload wel gelukt is, maar de planning nog niet bevestigd is. Zie hieronder voor hervatten; live gecombineerde planning is nog onbevestigd.
+8. Synchroniseer daarna je horloge via Garmin Connect en stuur de training waar ondersteund naar het horloge. Controleer de training op het horloge. De connector bevestigt nooit dat hij op het horloge staat.
+
+De bestaande losse upload- en planningtools blijven beschikbaar met elk eigen toestemming, ook in terminalmodus.
+
+### Hervatten en gedeeltelijke fouten
+
+Een operatiejournaal buiten de repository bewaart voortgang per exacte workout/datum/operatie, ook over herstarts en verschillende approval IDs. Een eenmaal gestarte upload wordt nooit herhaald. Het Garmin-workout-ID wordt direct na succesvolle upload opgeslagen. Bij fouten vóór een planning-POST kan de gebruiker expliciet laten hervatten: dezelfde argumenten en verbruikte approval ID blijven alleen tot de **oorspronkelijke** tienminutengrens geldig. Er wordt geen nieuwe upload gemaakt.
+
+Na verlopen toestemming is nieuwe browsergoedkeuring nodig voor dezelfde workout/datum. Vraag deze bewust aan; ChatGPT maakt nooit automatisch een vervangend verzoek. De nieuwe toestemming gebruikt hetzelfde journaal en voert uitsluitend ontbrekend werk uit. Als een upload een onbekende response gaf of crashte voordat het ID veilig opgeslagen was, is de uitkomst onzeker en blijft opnieuw uploaden geblokkeerd, ook met nieuwe toestemming. Controleer Garmin Connect handmatig.
+
+Een fout/onduidelijke response ná een planning-POST is eveneens onzeker. Expliciet hervatten controleert alleen de kalender: bij bevestiging volgt `scheduled`, anders blijft handmatige reconciliatie nodig. Er volgt nooit een tweede POST. Verwijder geen journaal of pogingrecords om deze beveiliging te omzeilen. Handmatige wijzigingen of andere Garmin-clients kunnen tussen kalendercontrole en POST racen; lokale locks voorkomen geen externe races.
+
+### Services herstarten na deze update
+
+Bij gebruik van de beheerscripts (niet combineren met systemd):
+
+```bash
+./scripts/stop-garmin.sh
+./scripts/start-garmin.sh
+./scripts/status-garmin.sh
+```
+
+Het bestaande tunnelprofiel moet `--approval-mode browser`, de private `--approval-origin`, `--enable-uploads` én `--enable-scheduling` bevatten. Het bestaande installatievoorbeeld bevat die al. Ververs daarna de tools in ChatGPT en controleer dat alle **zes** tools inclusief `upload_and_schedule_running_workout` zichtbaar zijn. Test de verbinding alleen met de offline builder. Een lokale wijziging of draaiende service bewijst nog geen bijgewerkte ChatGPT-toolset.
+
+Als je bewust de systemd-voorbeelden gebruikt in plaats van scripts:
+
+```bash
+systemctl --user restart garmin-browser-approval.service garmin-tunnel.service
+systemctl --user status garmin-browser-approval.service garmin-tunnel.service
+```
 
 Elke toestemming vervalt tien minuten na **aanvraag**, niet na de klik. De portal voert zelf geen Garmin-actie uit. ChatGPT native bevestigingen of onthouden toolrechten vervangen browsergoedkeuring niet. Geen automatisch nieuw verzoek, poll-loop of retry bij twijfel; controleer eerst Garmin Connect. Zie [fouten en herstel](TROUBLESHOOTING.md).
 

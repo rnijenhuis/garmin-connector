@@ -16,9 +16,9 @@ flowchart LR
 
 De OpenAI Tunnel gebruikt uitgaande HTTPS en start de lokale MCP-server over STDIO. Er is geen publieke MCP-listener. Tailscale Serve biedt uitsluitend de browserportal aan je tailnet aan; ChatGPT hoeft die URL niet te openen. De eigenaar doet dat zelf vanaf een tailnetapparaat. Tunneltoegang autoriseert toegang tot één opgeslagen Garmin-account: houd organisatie-, workspace- en pluginrechten beperkt tot deze eigenaar. Er is geen multi-useraccountmapping of publieke OAuth-service.
 
-`mcp_server.py` registreert vijf tools via de officiële Python MCP SDK. `mcp_tools.py` verzorgt validatie, filtering, lazy clients en goedkeuringscontrole. Imports/startup doen geen Garmin-login of netwerkverzoek; stdout blijft gereserveerd voor MCP. Inspector start een eigen Python-childproces. De absolute launcher `scripts/run_mcp.py` maakt starten onafhankelijk van de werkdirectory en verwijdert de OpenAI API-keyvariabelen vóór import van Garmin-code.
+`mcp_server.py` registreert zes tools via de officiële Python MCP SDK. `mcp_tools.py` verzorgt validatie, filtering, lazy clients en goedkeuringscontrole. Imports/startup doen geen Garmin-login of netwerkverzoek; stdout blijft gereserveerd voor MCP. Inspector start een eigen Python-childproces. De absolute launcher `scripts/run_mcp.py` maakt starten onafhankelijk van de werkdirectory en verwijdert de OpenAI API-keyvariabelen vóór import van Garmin-code.
 
-## De vijf tools
+## De zes tools
 
 | Tool | Verantwoordelijkheid |
 |---|---|
@@ -27,6 +27,7 @@ De OpenAI Tunnel gebruikt uitgaande HTTPS en start de lokale MCP-server over STD
 | `build_running_workout(name, steps, for_upload=false)` | Volledig offline gevalideerde Garmin-dictionary bouwen; normale uitvoer `{ok: true, workout: ...}`. `for_upload=true` geeft precies `{workout: ...}` voor Inspector. |
 | `upload_running_workout(workout, approval_id=null)` | Eerst pending review aanmaken; daarna met identieke payload en oorspronkelijke, goedgekeurde ID eenmaal een **nieuwe** template aanmaken. Vereist `--enable-uploads`. |
 | `schedule_running_workout(workout_id, date, approval_id=null)` | Bestaande hardlooptemplate afzonderlijk op strikte geldige `YYYY-MM-DD` zetten, na eigen review. Vereist `--enable-scheduling`; uploadt niets. |
+| `upload_and_schedule_running_workout(workout, date, approval_id=null)` | Browser-only: één exacte toestemming voor upload én planning. Beide enable-flags vereist. Duurzaam journaal voorkomt opnieuw uploaden; alleen `scheduled` bevestigt voltooiing. |
 
 Stappen zijn warmup, interval, recovery of cooldown, met exact één einde: meters of seconden. Hoogstens één doel: open, exact tempo in seconden/km (Garmin m/s = `1000 / seconds_per_km`), exact/ranged integer BPM 1–300 of ingestelde HR-zone 1–5. Native repeatblokken bevatten 1–100 herhalingen, niet-lege kinderen, maximaal vier repeatniveaus en samen maximaal 100 opgeslagen nodes. Elk kind loopt bij iedere herhaling, inclusief herstel bij de laatste. Unieke stapvolgorde is depth-first; geen automatische herstelstappen. Dit zijn connectorlimieten. Geavanceerde payloads zijn offline met de geïnstalleerde library gecontroleerd; live Garmin/deviceondersteuning daarvan is niet bewezen. Zie [voorbeelden en bibliotheekdetails](REFERENCE.md).
 
@@ -70,3 +71,23 @@ Beide processen moeten als dezelfde vertrouwde lokale gebruiker dezelfde standaa
 Lokale processen en bestanden van dezelfde OS-gebruiker zijn vertrouwd: arbitraire shell-/bestandstoegang kan goedkeuringsstate manipuleren. Geef agents die bevoegdheid of het portalwachtwoord niet. Een private tailnetroute plus Basic-auth is geschikt voor deze opzet met één eigenaar; het is geen publieke internetdienst. TLS, private ACL's en private tunnelrechten zijn vereisten. De huidige Serve-route is tailnet-only; tailnet-ACL's en OpenAI-accountrechten zijn hier niet volledig geaudit.
 
 MCP-resultaten zijn allowlisted: geen GPS, ruwe activiteiten/kalenders/profielen, credentials, sessietokens of ruwe Garmin-responses. Trainingsnaam, gefilterde statistieken, gevraagde datum en reviewlink komen wel in ChatGPT en vallen onder de daar geldende gegevens-/logregels. Deze filtering geldt voor MCP; de bestaande handmatige CLI kan uitgebreidere uitvoer tonen. Deel die niet ongeredigeerd. Zie [rotatie en herstel](TROUBLESHOOTING.md#geheimen-vervangen).
+
+## Gecombineerd journaal
+
+`combined.py` bindt `{action, workout, date}` met bestaande canonieke hashing.
+`browser/combined` bevat aparte consentbestanden en een journal/lock per payloadhash.
+Een flock over het hele uitvoeringspad serialiseert processen en threads, ook bij
+verschillende approval IDs. Tempfile + fsync + atomic replace + directory-fsync
+leggen elke fase vast. `upload_started` wordt vóór upload opgeslagen en blokkeert
+herhaling bij crash/unknown response; het ID wordt direct na upload bewaard.
+Planning gebruikt dezelfde attempt-ledger als standalone terminal/browser en
+controleert eerst running-template en strikt herkende kalenderrespons.
+
+Verbruikte gecombineerde toestemming blijft alleen bruikbaar voor expliciete
+hervatting van ontbrekende stappen binnen de oorspronkelijke tien minuten;
+geen herhaalde writes. Vóór elke nieuwe write wordt de vervaltijd opnieuw getoetst.
+Na expiry is verse onafhankelijke browserreview nodig voor dezelfde inputs en
+hetzelfde journaal. Onzekere planning mag alleen kalenderbewijs verzamelen;
+onzekere upload vereist handmatige reconciliatie. Geen resettool of automatische
+retry. Remote/manual races blijven mogelijk. Live gecombineerde Garmin-acceptatie
+is nog niet geverifieerd. Zie STARTUP voor gebruikersworkflow.

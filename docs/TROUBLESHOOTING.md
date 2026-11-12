@@ -120,7 +120,7 @@ Dit is de bedoelde onafhankelijke Basic-authenticatie over private HTTPS. Gebrui
 
 ## Tunnel gestart, maar ChatGPT kan geen MCP-tools bereiken
 
-Controleer proces, profiel `garmin-plus`, absolute interpreter/launcher en bestaande `.venv`. De tunnel start het MCP-child; een los gestart serverproces wordt niet door de tunnel gebruikt. Controleer dat alle vijf tools in de plugin staan en vernieuw de tool-lijst. Controleer de gekoppelde ChatGPT-workspace, de organisatie, Read + Use en of de plugin in de conversatie is geselecteerd.
+Controleer proces, profiel `garmin-plus`, absolute interpreter/launcher en bestaande `.venv`. De tunnel start het MCP-child; een los gestart serverproces wordt niet door de tunnel gebruikt. Controleer dat alle zes tools in de plugin staan en vernieuw de tool-lijst. Controleer de gekoppelde ChatGPT-workspace, de organisatie, Read + Use en of de plugin in de conversatie is geselecteerd.
 
 ```bash
 curl -i http://127.0.0.1:8080/readyz
@@ -183,3 +183,7 @@ Het `.next`-bestand moet vooraf nog niet bestaan. De oude hash wordt hiermee ver
 ### Garmin-sessie
 
 Verander bij een incident het Garmin-wachtwoord en trek waar mogelijk oude sessies in via Garmin-accountbeheer. Maak daarna zelf een verse sessie met `test_garmin.py`; beheer eventuele oude lokale tokens alleen privé buiten de repository. Plak geen sessie-inhoud in diagnostiek. De exacte intrekkingsmogelijkheden hangen af van Garmin-accountbeheer.
+
+## Gecombineerde actie
+
+`uploaded_not_scheduled` bevat het opgeslagen workout-ID en de datum. Hervat bewust binnen de oorspronkelijke expiry met dezelfde argumenten/ID; na expiry is nieuwe browserreview voor identieke inputs nodig. Onzekere uploads worden nooit opnieuw geüpload. Na een onzekere planning controleert hervatten alleen de kalender. Verwijder nooit state om opnieuw te proberen. Zie [STARTUP](STARTUP.md#hervatten-en-gedeeltelijke-fouten).

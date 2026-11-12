@@ -305,7 +305,7 @@ class BrowserProtocolTests(unittest.IsolatedAsyncioTestCase):
                                 enable_uploads=True, enable_scheduling=True, browser_approval_origin=ORIGIN)
             async with Client(create_server(tools), read_timeout_seconds=5) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
-                self.assertEqual(len(names), 5)
+                self.assertEqual(len(names), 6)
                 self.assertFalse(any('approve' in name for name in names))
                 result = await client.call_tool('upload_running_workout', {'workout': example_workout(), 'approval_id': None})
                 self.assertEqual(result.structured_content['status'], 'approval_required')
@@ -324,7 +324,7 @@ class BrowserProtocolTests(unittest.IsolatedAsyncioTestCase):
             params = StdioServerParameters(command=sys.executable,
                 args=[str(root / 'scripts/run_mcp.py'), '--approval-mode', 'browser', '--approval-origin', ORIGIN], cwd='/tmp')
             async with Client(params, read_timeout_seconds=5) as client:
-                self.assertEqual(len((await client.list_tools()).tools), 5)
+                self.assertEqual(len((await client.list_tools()).tools), 6)
                 result = await client.call_tool('build_running_workout', {'name': 'Offline browser integration', 'steps': [{'kind': 'interval', 'duration_seconds': 60}]})
                 self.assertTrue(result.structured_content['ok'])
                 disabled = await client.call_tool('upload_running_workout', {'workout': result.structured_content['workout']})

@@ -26,6 +26,7 @@ from starlette.routing import Route
 
 from .approvals import ApprovalStore, outside_project
 from .scheduling import ScheduleApprovalStore
+from .combined import CombinedApprovalStore
 
 DEFAULT_STATE = '~/.local/state/garmin-connector/approvals'
 DEFAULT_AUTH = '~/.config/garmin-connector/browser-auth.json'
@@ -46,6 +47,7 @@ def browser_stores(state_root=DEFAULT_STATE):
     root = outside_project(state_root)
     return {
         'upload': ApprovalStore(root / 'browser' / 'upload'),
+        'upload-and-schedule': CombinedApprovalStore(root / 'browser' / 'combined'),
         # Use the legacy ledger too, so changing approval mode cannot bypass it.
         'schedule': ScheduleApprovalStore(root / 'browser' / 'schedule', attempt_directory=root / 'scheduling'),
     }
@@ -91,6 +93,29 @@ def workout_summary(payload):
             lines.append(f"{indent}{step['stepType']['stepTypeKey']}: {value:g} {unit}, {detail}")
 
     visit(payload['workoutSegments'][0]['workoutSteps'])
+    def totals(steps):
+        distance, duration, all_distance, all_time = 0, 0, True, True
+        for step in steps:
+            if step['type'] == 'RepeatGroupDTO':
+                d, t, ad, at = totals(step['workoutSteps'])
+                count = step['numberOfIterations']
+                distance += d * count
+                duration += t * count
+                all_distance &= ad
+                all_time &= at
+            elif step['endCondition']['conditionTypeKey'] == 'distance':
+                distance += step['endConditionValue']
+                all_time = False
+            else:
+                duration += step['endConditionValue']
+                all_distance = False
+        return distance, duration, all_distance, all_time
+
+    d, t, ad, at = totals(payload['workoutSegments'][0]['workoutSteps'])
+    lines.append(f"{'Total distance' if ad else 'Known distance subtotal'}: {d:g} metres")
+    lines.append(f"{'Total duration' if at else 'Known duration subtotal'}: {t:g} seconds")
+    if not ad or not at:
+        lines.append('Full distance/duration cannot both be calculated; pace targets are not measured duration.')
     return '\n'.join(lines)
 
 
@@ -139,7 +164,7 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
             return Response('Authentication required.', status_code=401,
                             headers={**headers, 'WWW-Authenticate': 'Basic realm="Garmin workout approval", charset="UTF-8"'})
         # Do not trust forwarded headers or a caller-supplied Host for links/CSRF.
-        if request.url.hostname != urlsplit(origin).hostname:
+        if request.headers.get('host') != urlsplit(origin).netloc:
             event('portal', 'approval_error')
             return Response('Invalid host.', status_code=400, headers=headers)
         operation = request.path_params['operation']
@@ -172,7 +197,12 @@ def create_approval_app(origin, auth_record, stores=None, *, clock=time.monotoni
                 message = 'Approved for one attempt before the original expiry.' if form['decision'][0] == 'approve' else 'Denied. No Garmin change authorized.'
                 return HTMLResponse(f'<h1>{message}</h1><p>Return to ChatGPT and ask it to continue. Do not create a new request.</p>', headers=headers)
             payload = record['payload']
-            if operation == 'upload':
+            if operation == 'upload-and-schedule':
+                summary = ('Approve BOTH upload of a NEW workout AND calendar scheduling on '
+                           + payload['date'] + ':\n' + workout_summary(payload['workout'])
+                           + '\nResumption reuses durable progress; it never uploads twice. '
+                           'After expiry fresh browser consent is required. Unknown writes require reconciliation.')
+            elif operation == 'upload':
                 summary = 'Create a NEW Garmin workout:\n' + workout_summary(payload)
             else:
                 summary = f"Schedule existing workout {payload['workout_id']} on {payload['date']} (calendar date)."
